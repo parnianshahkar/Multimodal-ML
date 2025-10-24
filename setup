@@ -1,0 +1,13 @@
+# Check if SSH agent is already running
+if [ -z "$SSH_AGENT_PID" ]; then
+    echo "Starting ssh-agent..."
+    eval "$(ssh-agent -s)"
+fi
+# Add the SSH key to the agent
+ssh-add -l &>/dev/null
+if [ $? -ne 0 ]; then
+    echo "Adding your SSH key..."
+    ssh-add ~/.ssh/id_ed25519
+else
+    echo "SSH key is already added."
+fi
