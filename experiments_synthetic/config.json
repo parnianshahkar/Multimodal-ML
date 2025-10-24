@@ -1,0 +1,25 @@
+{
+    "task_type": "regression",
+    "output_dim": 1,
+    "use_gpu": false,
+    "rho_list": [0, 0.99, 3],
+    "rho_list_ncl": [0.1, 0.3, 0.5],
+    "epochs": 10,
+    "init_lr": 0.001,
+    "weight_decay": 0,
+    "gamma": 0.1,
+    "divergence_weight_type": "clustering",
+    "burn_in_epochs": 0,
+    "optimal_k": null,
+    "ensemble_methods": [
+        "simple_average",
+        "weighted_average",
+        "meta_learner"
+        ],
+    "epochs_meta_learner": 10,
+    "progress": true,
+    "random_state": 0,
+    "verbose": true,
+    "ckpt_dir": "./checkpoints/",
+    "log_dir": "./logs/"
+  }

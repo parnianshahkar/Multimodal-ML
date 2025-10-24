@@ -1,0 +1,36 @@
+Method,Test_metric,best_rho,cohort_pairs,ensemble_idxs,cluster_idxs,random_state,dim_modalities,n,n_train,n_val,n_test,extractor,weight_type
+modality_1,73.76573944091797,,,,,1234,"[500, 400]",2000,1280,320,400,separate,clustering
+modality_2,58.63313293457031,,,,,1234,"[500, 400]",2000,1280,320,400,separate,clustering
+early_fusion,3.9357616901397705,,,,,1234,"[500, 400]",2000,1280,320,400,separate,clustering
+late_fusion,37.30242156982422,,,,,1234,"[500, 400]",2000,1280,320,400,separate,clustering
+coop,4.119237899780273,0.0,,,,1234,"[500, 400]",2000,1280,320,400,separate,clustering
+metafusion_simple_average,17.986480712890625,0.0,"[(500, 400), (500, 0), (0, 400)]",,[0],1234,"[500, 400]",2000,1280,320,400,separate,clustering
+metafusion_weighted_average,4.7485432624816895,0.0,"[(500, 400), (500, 0), (0, 400)]",,[0],1234,"[500, 400]",2000,1280,320,400,separate,clustering
+metafusion_meta_learner,4.266781806945801,0.0,"[(500, 400), (500, 0), (0, 400)]",,[0],1234,"[500, 400]",2000,1280,320,400,separate,clustering
+metafusion_greedy_ensemble,4.509246349334717,0.0,"[(500, 400), (500, 0), (0, 400)]","[0, 2]",[0],1234,"[500, 400]",2000,1280,320,400,separate,clustering
+metafusion_best_single,4.197611331939697,0.0,"[(500, 400), (500, 0), (0, 400)]",,[0],1234,"[500, 400]",2000,1280,320,400,separate,clustering
+metafusion_cohort,"[4.197611331939697, 72.91716003417969, 58.24107360839844]",0.0,"[(500, 400), (500, 0), (0, 400)]",,[0],1234,"[500, 400]",2000,1280,320,400,separate,clustering
+indep_simple_average,17.986480712890625,,"[(500, 400), (500, 0), (0, 400)]",,,1234,"[500, 400]",2000,1280,320,400,separate,clustering
+indep_weighted_average,4.7485432624816895,,"[(500, 400), (500, 0), (0, 400)]",,,1234,"[500, 400]",2000,1280,320,400,separate,clustering
+indep_meta_learner,4.266781806945801,,"[(500, 400), (500, 0), (0, 400)]",,,1234,"[500, 400]",2000,1280,320,400,separate,clustering
+indep_greedy_ensemble,4.509246349334717,,"[(500, 400), (500, 0), (0, 400)]",,,1234,"[500, 400]",2000,1280,320,400,separate,clustering
+indep_best_single,4.197611331939697,,"[(500, 400), (500, 0), (0, 400)]",,,1234,"[500, 400]",2000,1280,320,400,separate,clustering
+indep_cohort,"[4.197611331939697, 72.91716003417969, 58.24107360839844]",,"[(500, 400), (500, 0), (0, 400)]",,,1234,"[500, 400]",2000,1280,320,400,separate,clustering
+jointlearning_simple_average,4.199458122253418,,,,,1234,"[500, 400]",2000,1280,320,400,separate,clustering
+jointlearning_weighted_average,4.351639270782471,,,,,1234,"[500, 400]",2000,1280,320,400,separate,clustering
+jointlearning_meta_learner,11.246455192565918,,,,,1234,"[500, 400]",2000,1280,320,400,separate,clustering
+jointlearning_greedy_ensemble,25.94879722595215,,,"[1, 0]",,1234,"[500, 400]",2000,1280,320,400,separate,clustering
+jointlearning_best_single,77.46548461914062,,,,,1234,"[500, 400]",2000,1280,320,400,separate,clustering
+jointlearning_cohort,"[86.8773422241211, 77.46548461914062, 94.75387573242188]",,,,,1234,"[500, 400]",2000,1280,320,400,separate,clustering
+ncl_simple_average,14.243581771850586,0.1,"[(500, 400), (500, 0), (0, 400)]",,,1234,"[500, 400]",2000,1280,320,400,separate,clustering
+ncl_weighted_average,3.965787410736084,0.1,"[(500, 400), (500, 0), (0, 400)]",,,1234,"[500, 400]",2000,1280,320,400,separate,clustering
+ncl_meta_learner,4.020580291748047,0.1,"[(500, 400), (500, 0), (0, 400)]",,,1234,"[500, 400]",2000,1280,320,400,separate,clustering
+ncl_greedy_ensemble,4.128260612487793,0.1,"[(500, 400), (500, 0), (0, 400)]","[0, 2]",,1234,"[500, 400]",2000,1280,320,400,separate,clustering
+ncl_best_single,4.1756272315979,0.1,"[(500, 400), (500, 0), (0, 400)]",,,1234,"[500, 400]",2000,1280,320,400,separate,clustering
+ncl_cohort,"[4.1756272315979, 73.60665893554688, 57.1135368347168]",0.1,"[(500, 400), (500, 0), (0, 400)]",,,1234,"[500, 400]",2000,1280,320,400,separate,clustering
+shapley_simple_average,12.067238807678223,,,,,1234,"[500, 400]",2000,1280,320,400,separate,clustering
+shapley_weighted_average,4.5053935050964355,,,,,1234,"[500, 400]",2000,1280,320,400,separate,clustering
+shapley_meta_learner,10.453387260437012,,,,,1234,"[500, 400]",2000,1280,320,400,separate,clustering
+shapley_greedy_ensemble,5.225418567657471,,,"[0, 2]",,1234,"[500, 400]",2000,1280,320,400,separate,clustering
+shapley_best_single,5.930546283721924,,,,,1234,"[500, 400]",2000,1280,320,400,separate,clustering
+shapley_cohort,"[5.930546283721924, 87.4382553100586, 63.68076705932617]",,,,,1234,"[500, 400]",2000,1280,320,400,separate,clustering

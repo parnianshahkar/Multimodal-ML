@@ -1,0 +1,13 @@
+{
+    "task_type": "classification",
+    "output_dim": 4,
+    "use_gpu": false,
+    "epochs": 20,
+    "init_lr": 0.01,
+    "weight_decay": 0,
+    "gamma": 0.1,
+    "progress": false,
+    "random_state": 0,
+    "verbose": false,
+    "ckpt_dir": "./checkpoints/"
+}

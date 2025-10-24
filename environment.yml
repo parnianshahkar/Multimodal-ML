@@ -1,0 +1,23 @@
+name: fusion_stable310
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.10
+  - pip
+  - numpy=1.26.*
+  - scipy=1.13.*
+  - pandas=2.2.*
+  - scikit-learn=1.5.0
+  - matplotlib=3.8.*
+  - seaborn=0.13.2
+  - tqdm=4.66.*
+  - imbalanced-learn=0.13.0
+  - protobuf=3.20.3
+  - tensorboard
+  - git
+  - pip:
+      - tensorboard_logger
+      - torch==2.2.2
+      - torchvision==0.17.2
+      - torchaudio==2.2.2

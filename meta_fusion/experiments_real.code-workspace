@@ -1,0 +1,16 @@
+{
+	"folders": [
+		{
+			"path": "../experiments_real"
+		},
+		{
+			"path": "../experiments_synthetic"
+		},
+		{
+			"path": "."
+		},
+		{
+			"path": "../notebooks"
+		}
+	]
+}
