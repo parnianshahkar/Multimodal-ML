@@ -34,8 +34,7 @@ if True:
         print("Error: incorrect number of parameters.")
         quit()
 
-    seed = 1234
-
+    seed = int(sys.argv[1])
 
 # Fixed data parameters
 repetition=1
@@ -49,8 +48,8 @@ trans_type = ["linear", "linear", "linear"]
 mod_prop = [1, 1, 0, 0]
 interactive_prop = 0
 
-mod_outs = [[0, 200, 300, 400, 500], [0, 100, 200, 300, 400]]
-#mod_outs = [[0, 500], [0, 400]]
+mod_outs = [[0, 500], [0, 400]]
+#mod_outs = [[0, 200, 300, 400, 500], [0, 100, 200, 300, 400]]
 num_modalities = 2
 combined_hiddens = [128, 64]
 mod_hiddens = [[256], [256]]
