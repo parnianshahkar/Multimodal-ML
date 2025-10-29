@@ -35,7 +35,7 @@ if True:
         print("Error: incorrect number of parameters.")
         quit()
 
-    seed = 1234
+    seed = int(sys.argv[1])
 
 
 # Fixed data parameters
