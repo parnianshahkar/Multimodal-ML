@@ -2,8 +2,8 @@
 export PATH="/pkg/slurm/21.08.5/bin:$PATH"
 
 # Parameters
-SEED_LIST=$(seq 1 3)
-#SEED_LIST=$(seq 1 2)
+#SEED_LIST=$(seq 1 3)
+SEED_LIST=$(seq 1 100)
 DATASET="regression"
 EXPNAME="linear_early"
 
