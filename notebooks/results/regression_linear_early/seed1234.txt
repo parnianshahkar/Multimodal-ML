@@ -16,21 +16,21 @@ indep_meta_learner,4.266781806945801,,"[(500, 400), (500, 0), (0, 400)]",,,1234,
 indep_greedy_ensemble,4.509246349334717,,"[(500, 400), (500, 0), (0, 400)]",,,1234,"[500, 400]",2000,1280,320,400,separate,clustering
 indep_best_single,4.197611331939697,,"[(500, 400), (500, 0), (0, 400)]",,,1234,"[500, 400]",2000,1280,320,400,separate,clustering
 indep_cohort,"[4.197611331939697, 72.91716003417969, 58.24107360839844]",,"[(500, 400), (500, 0), (0, 400)]",,,1234,"[500, 400]",2000,1280,320,400,separate,clustering
-jointlearning_simple_average,4.199458122253418,,,,,1234,"[500, 400]",2000,1280,320,400,separate,clustering
-jointlearning_weighted_average,4.351639270782471,,,,,1234,"[500, 400]",2000,1280,320,400,separate,clustering
-jointlearning_meta_learner,11.246455192565918,,,,,1234,"[500, 400]",2000,1280,320,400,separate,clustering
-jointlearning_greedy_ensemble,25.94879722595215,,,"[1, 0]",,1234,"[500, 400]",2000,1280,320,400,separate,clustering
-jointlearning_best_single,77.46548461914062,,,,,1234,"[500, 400]",2000,1280,320,400,separate,clustering
-jointlearning_cohort,"[86.8773422241211, 77.46548461914062, 94.75387573242188]",,,,,1234,"[500, 400]",2000,1280,320,400,separate,clustering
-ncl_simple_average,14.243581771850586,0.1,"[(500, 400), (500, 0), (0, 400)]",,,1234,"[500, 400]",2000,1280,320,400,separate,clustering
-ncl_weighted_average,3.965787410736084,0.1,"[(500, 400), (500, 0), (0, 400)]",,,1234,"[500, 400]",2000,1280,320,400,separate,clustering
-ncl_meta_learner,4.020580291748047,0.1,"[(500, 400), (500, 0), (0, 400)]",,,1234,"[500, 400]",2000,1280,320,400,separate,clustering
-ncl_greedy_ensemble,4.128260612487793,0.1,"[(500, 400), (500, 0), (0, 400)]","[0, 2]",,1234,"[500, 400]",2000,1280,320,400,separate,clustering
-ncl_best_single,4.1756272315979,0.1,"[(500, 400), (500, 0), (0, 400)]",,,1234,"[500, 400]",2000,1280,320,400,separate,clustering
-ncl_cohort,"[4.1756272315979, 73.60665893554688, 57.1135368347168]",0.1,"[(500, 400), (500, 0), (0, 400)]",,,1234,"[500, 400]",2000,1280,320,400,separate,clustering
-shapley_simple_average,12.067238807678223,,,,,1234,"[500, 400]",2000,1280,320,400,separate,clustering
-shapley_weighted_average,4.5053935050964355,,,,,1234,"[500, 400]",2000,1280,320,400,separate,clustering
-shapley_meta_learner,10.453387260437012,,,,,1234,"[500, 400]",2000,1280,320,400,separate,clustering
-shapley_greedy_ensemble,5.225418567657471,,,"[0, 2]",,1234,"[500, 400]",2000,1280,320,400,separate,clustering
-shapley_best_single,5.930546283721924,,,,,1234,"[500, 400]",2000,1280,320,400,separate,clustering
-shapley_cohort,"[5.930546283721924, 87.4382553100586, 63.68076705932617]",,,,,1234,"[500, 400]",2000,1280,320,400,separate,clustering
+jointlearning_simple_average,4.193029880523682,,,,,1234,"[500, 400]",2000,1280,320,400,separate,clustering
+jointlearning_weighted_average,4.288529872894287,,,,,1234,"[500, 400]",2000,1280,320,400,separate,clustering
+jointlearning_meta_learner,11.221004486083984,,,,,1234,"[500, 400]",2000,1280,320,400,separate,clustering
+jointlearning_greedy_ensemble,26.126554489135742,,,"[1, 0]",,1234,"[500, 400]",2000,1280,320,400,separate,clustering
+jointlearning_best_single,78.17144775390625,,,,,1234,"[500, 400]",2000,1280,320,400,separate,clustering
+jointlearning_cohort,"[81.78608703613281, 78.17144775390625, 94.43157958984375]",,,,,1234,"[500, 400]",2000,1280,320,400,separate,clustering
+ncl_simple_average,15.32312297821045,0.1,"[(500, 400), (500, 0), (0, 400)]",,,1234,"[500, 400]",2000,1280,320,400,separate,clustering
+ncl_weighted_average,4.0849199295043945,0.1,"[(500, 400), (500, 0), (0, 400)]",,,1234,"[500, 400]",2000,1280,320,400,separate,clustering
+ncl_meta_learner,4.0260396003723145,0.1,"[(500, 400), (500, 0), (0, 400)]",,,1234,"[500, 400]",2000,1280,320,400,separate,clustering
+ncl_greedy_ensemble,4.1097636222839355,0.1,"[(500, 400), (500, 0), (0, 400)]","[0, 2]",,1234,"[500, 400]",2000,1280,320,400,separate,clustering
+ncl_best_single,4.019205093383789,0.1,"[(500, 400), (500, 0), (0, 400)]",,,1234,"[500, 400]",2000,1280,320,400,separate,clustering
+ncl_cohort,"[4.019205093383789, 73.32959747314453, 57.067649841308594]",0.1,"[(500, 400), (500, 0), (0, 400)]",,,1234,"[500, 400]",2000,1280,320,400,separate,clustering
+shapley_simple_average,11.949570655822754,,,,,1234,"[500, 400]",2000,1280,320,400,separate,clustering
+shapley_weighted_average,4.497323989868164,,,,,1234,"[500, 400]",2000,1280,320,400,separate,clustering
+shapley_meta_learner,10.470620155334473,,,,,1234,"[500, 400]",2000,1280,320,400,separate,clustering
+shapley_greedy_ensemble,5.231042385101318,,,"[0, 2]",,1234,"[500, 400]",2000,1280,320,400,separate,clustering
+shapley_best_single,5.930477142333984,,,,,1234,"[500, 400]",2000,1280,320,400,separate,clustering
+shapley_cohort,"[5.930477142333984, 87.19904327392578, 63.79140090942383]",,,,,1234,"[500, 400]",2000,1280,320,400,separate,clustering

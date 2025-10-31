@@ -588,28 +588,22 @@ class Trainer_Joint(Trainer):
                     modalities = [mod.cuda() for mod in modalities]
                     target = target.cuda()
                 
-                # Zero all gradients
-                for optimizer in self.optimizers:
-                    optimizer.zero_grad()
                 
                 # Forward pass ONCE
                 outputs = [model(modalities) for model in self.models]
+                outputs_det = [o.detach() for o in outputs]   # peers as constants
                 
                 # Compute losses based on method
                 if use_approximate:
                     # Approximate Shapley via permutation sampling
-                    self._compute_approximate_shapley_losses(
-                        outputs, target, num_permutations, losses
+                    losses = self._compute_approximate_shapley_losses(
+                        outputs, outputs_det, target, num_permutations, losses
                     )
                 else:
                     # Exact Shapley computation
-                    self._compute_exact_shapley_losses(
-                        outputs, target, relevant_subsets, losses
+                    losses = self._compute_exact_shapley_losses(
+                        outputs, outputs_det, target, relevant_subsets, losses
                     )
-                
-                # Update ALL models together
-                for optimizer in self.optimizers:
-                    optimizer.step()
                 
                 # Measure elapsed time
                 toc = time.time()
@@ -627,38 +621,45 @@ class Trainer_Joint(Trainer):
         return [losses[i].avg for i in range(self.model_num)]
 
 
-    def _compute_exact_shapley_losses(self, outputs, target, relevant_subsets, losses):
+    def _compute_exact_shapley_losses(self, outputs, outputs_det, target, relevant_subsets, losses):
         """Compute exact Shapley values using all coalitions."""
+        M = self.model_num        # number of models in the ensemble
+        B = target.size(0)        # batch size (number of samples in this mini-batch)
         for i in range(self.model_num):
             loss = 0
+            opt_i = self.optimizers[i]
+            opt_i.zero_grad()
             for subset in relevant_subsets[i]:
-                Joint_prediction = sum(outputs[e] for e in subset) / len(subset)
+                Joint_prediction = (sum(outputs_det[e] for e in subset) - outputs_det[i] + outputs[i]) / len(subset)
                 loss += self.loss_mse(Joint_prediction, target) / len(relevant_subsets[i])
             
-            # Accumulate gradients
-            retain = (i < self.model_num - 1)
-            loss.backward(retain_graph=retain)
-            losses[i].update(loss.item(), target.size(0))
+            loss.backward(retain_graph=(i < M - 1))
+            opt_i.step()
+            losses[i].update(loss.item(), B)
+        return losses
 
-
-    def _compute_approximate_shapley_losses(self, outputs, target, num_permutations, losses):
+    def _compute_approximate_shapley_losses(self, outputs, outputs_det, target, num_permutations, losses):
         """Optimized: only compute V(S ∪ {i}), skip V(S)."""
+        M = self.model_num        # number of models in the ensemble
+        B = target.size(0)        # batch size (number of samples in this mini-batch)
         permutations = [np.random.permutation(self.model_num).tolist() 
                         for _ in range(num_permutations)]
         
         for i in range(self.model_num):
             loss = 0
-            
+            opt_i = self.optimizers[i]
+            opt_i.zero_grad()
             for perm in permutations:
                 pos = perm.index(i)
                 coalition_with_i = perm[:pos] + [i]  # S ∪ {i}
                 
-                pred = sum(outputs[e] for e in coalition_with_i) / len(coalition_with_i)
+                pred = (sum(outputs_det[e] for e in coalition_with_i)- outputs_det[i] + outputs[i]) / len(coalition_with_i)
                 loss += self.loss_mse(pred, target) / num_permutations
             
-            retain = (i < self.model_num - 1)
-            loss.backward(retain_graph=retain)
-            losses[i].update(loss.item(), target.size(0))
+            loss.backward(retain_graph=(i < M - 1))
+            opt_i.step()
+            losses[i].update(loss.item(), B)
+        return losses    
 
 
     # def train_one_epoch(self, epoch):
@@ -1547,37 +1548,29 @@ class Trainer_NCL():
                 # forward all models once
                 outputs = [model(modalities) for model in self.models]  # each [B, ...]
                 O = torch.stack(outputs, dim=0)                          # [M, B, ...]
+                O_detached = O.detach()                                  # peers seen as constants
+                sum_peers = O_detached.sum(dim=0)
                 M = self.model_num
                 B = target.size(0)
 
-                # build total loss as sum of per-model losses
-                total_loss = 0.0
                 for i in range(M):
-                    # base regression loss (e.g., MSE)
+                    self.optimizers[i].zero_grad()
+
                     task_loss = self.loss_task(outputs[i], target)
 
-                    # diversity penalty (push away from peers' mean)
                     if rho > 0 and M > 1:
-                        # leave-one-out mean of peers (exclude model i)
-                        F_i = (O.sum(dim=0) - outputs[i]) / (M - 1)      # [B, ...]
-                        corr_loss = self.loss_mse(outputs[i], F_i)       # scalar
-                        loss = task_loss - rho * corr_loss
+                        F_i = (sum_peers - O_detached[i]) / (M - 1)      # constant wrt params
+                        corr_loss = self.loss_mse(outputs[i], F_i)
+                        loss_i = task_loss - rho * corr_loss
                     else:
-                        loss = task_loss
+                        loss_i = task_loss
 
-                    total_loss = total_loss + loss
+                    # retain the graph until the last model uses it
+                    loss_i.backward(retain_graph=(i < M - 1))
+                    self.optimizers[i].step()
 
-                    # record per-model metrics
-                    # (use .item() to detach; target.size(0) is batch size)
-                    losses[i].update(loss.item(), B)
+                    losses[i].update(loss_i.item(), B)
                     task_losses[i].update(task_loss.item(), B)
-
-                # single backward pass for the joint objective
-                for opt in self.optimizers:
-                    opt.zero_grad()
-                total_loss.backward()
-                for opt in self.optimizers:
-                    opt.step()
                 # if you have schedulers, step them here per-optimizer as desired
                 # for sch in self.schedulers: sch.step()
 
