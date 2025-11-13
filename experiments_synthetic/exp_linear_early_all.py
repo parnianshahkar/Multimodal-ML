@@ -44,10 +44,12 @@ repetition=1
 # Data model parameters
 n = 2000
 dim_modalities = [500, 400]
-dim_latent = [20, 30, 0]
+# dim_modalities = [500, 400, 200, 100] check the output to see if makes sense. 
+
+dim_latent = [20, 30, 0] #Last one is the shared. 
 noise_ratios = [0.4, 0.4]
 trans_type = ["linear", "linear", "linear"]
-mod_prop = [1, 1, 0, 0]
+mod_prop = [1, 1, 0, 0] # Last two: shared and interaction. 
 interactive_prop = 0
 
 # mod_outs = [[0, 200, 300, 400, 500], [0, 100, 200, 300, 400]]
@@ -163,7 +165,7 @@ def run_single_experiment(config, extractor_config, n, random_state,
     # Benchmark models #
     #------------------#
     bm_extractor = Extractors([[d,0] for d in dim_modalities], dim_modalities, train_loader, val_loader)
-    _ = bm_extractor.get_dummy_extractors()
+    _ = bm_extractor.get_dummy_extractors() # No need for extractors
     bm_cohort = Cohorts(extractors=bm_extractor, combined_hidden_layers=combined_hiddens, output_dim=output_dim)
 
     if run_oracle:

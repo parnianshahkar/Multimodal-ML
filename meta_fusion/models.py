@@ -120,7 +120,7 @@ class Fuse_Net(nn.Module):
 
 
 class Cohorts:
-    def __init__(self, extractors, combined_hidden_layers, output_dim,
+    def __init__(self, extractors, combined_hidden_layers, output_dim, # A new class 
                  is_mod_static = None, freeze_mod_extractors = None):
         self.extractor_models = extractors.extractors  # The actual extraction models
         self.extractors = extractors  # The extractor class object
@@ -135,6 +135,7 @@ class Cohorts:
         self.model_structures = []
 
         # Create combinations of extractors for each modality
+        # No need for iterations, no need for extractors just get dim_modalities and actual modalities and define new student for each modality. 
         extractor_combinations = itertools.product(*self.extractor_models)
         dim_combinations = itertools.product(*self.extractors.mod_outs)
 
@@ -144,18 +145,18 @@ class Cohorts:
                 continue
 
             combined_input_dim = sum(dim_combination)
-            combined_model = MLP_Net(
+            model = MLP_Net(
                 input_dim=combined_input_dim,
                 hidden_dims=self.combined_hidden_layers,
                 output_dim=self.output_dim
             )
 
-            model = Fuse_Net(
-                feature_extractors=extractor_combination,
-                combined_model=combined_model,
-                is_static_list=self.is_mod_static,
-                freeze_extractors_list=self.freeze_mod_extractors
-            )
+            # model = Fuse_Net( # concatenating two models : extractor and MLP, now no need for that. 
+            #     feature_extractors=extractor_combination,
+            #     combined_model=combined_model,
+            #     is_static_list=self.is_mod_static,
+            #     freeze_extractors_list=self.freeze_mod_extractors
+            # )
 
             self.cohort_models.append(model)
             self.cohort_dims.append(dim_combination)
