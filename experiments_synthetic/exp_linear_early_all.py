@@ -42,21 +42,20 @@ if True:
 repetition=1
 
 # Data model parameters
-n = 2000
-dim_modalities = [500, 400]
-# dim_modalities = [500, 400, 200, 100] check the output to see if makes sense. 
-
-dim_latent = [20, 30, 0] #Last one is the shared. 
-noise_ratios = [0.4, 0.4]
-trans_type = ["linear", "linear", "linear"]
-mod_prop = [1, 1, 0, 0] # Last two: shared and interaction. 
+n = 4000
+dim_modalities = [500, 400, 100]
+dim_latent = [20, 30, 10, 0] # last one is the shared component 
+noise_ratios = [0.4, 0.4, 0.4]
+trans_type = ["linear", "linear", "linear", "linear"] #last one is shared
+mod_prop = [1, 1, 1, 0, 0]
 interactive_prop = 0
 
 # mod_outs = [[0, 200, 300, 400, 500], [0, 100, 200, 300, 400]]
-mod_outs = [[0, 500], [0, 400]]
-num_modalities = 2
-combined_hiddens = [128, 64]
-mod_hiddens = [[256], [256]]
+# mod_outs = [[0, 500], [0, 400]]
+num_modalities = len(dim_modalities)
+print('num_modalities', num_modalities)
+combined_hiddens = [128, 64] # only used for benchmarks
+mod_hiddens = [[256], [256], [256]] # hidden layer for each modality
 
 # data parameters
 data_name = 'regression'
@@ -120,12 +119,7 @@ def add_header(results):
 #####################
 # Define Experiment #
 #####################
-#####################
-# Define Experiment #
-#####################
-def run_single_experiment(config, extractor_config, n, random_state, 
-                          mod_outs, combined_hiddens, mod_hiddens,
-                          separate, is_mod_static, freeze_mod_extractors,
+def run_single_experiment(config, extractor_config, n, random_state, mod_hiddens,
                           run_oracle=False, run_coop=True, run_all_at_once=False):
 
 
@@ -177,14 +171,12 @@ def run_single_experiment(config, extractor_config, n, random_state,
     #----------------------------#
     # Proposed model: Meta Fuse  #
     #----------------------------#
-    meta_extractor = Extractors(mod_outs, dim_modalities, train_loader, val_loader)
-    if (extractor_type == 'encoder') or (extractor_type == 'separate'):
-        _ = meta_extractor.get_encoder_extractors(mod_hiddens, separate=separate, config=extractor_config)
-    elif extractor_type == 'PCA':
-        _ = meta_extractor.get_PCA_extractors()
-    meta_cohort = Cohorts(extractors=meta_extractor, combined_hidden_layers=combined_hiddens, output_dim=output_dim,
-                            is_mod_static=is_mod_static, freeze_mod_extractors=freeze_mod_extractors)
-
+    # meta_extractor = Extractors(mod_outs, dim_modalities, train_loader, val_loader)
+    # if (extractor_type == 'encoder') or (extractor_type == 'separate'):
+        # _ = meta_extractor.get_encoder_extractors(mod_hiddens, separate=separate, config=extractor_config)
+    # elif extractor_type == 'PCA':
+        # _ = meta_extractor.get_PCA_extractors()
+    meta_cohort = Cohorts_new(dim_modalities = dim_modalities, num_modalities= num_modalities, mod_hiddens  = mod_hiddens, output_dim=output_dim)
 
     #------------------------------#
     #  Train and test benchmarks   #
@@ -209,24 +201,24 @@ def run_single_experiment(config, extractor_config, n, random_state,
         res_list.append(res)
         print(f"Finished running oracle benchmarks!")
         
-    if run_coop:
-        bm_models = bm_cohort.get_cohort_models()
-        _, bm_dims = bm_cohort.get_cohort_info()    
-        coop = Coop(config, bm_models, bm_dims, [train_loader, val_loader])
-        coop.train()
-        res = coop.test(test_loader)
-        res_list.append(res)
-        best_rho['coop'] = coop.best_rho
-        print(f"Finished running coop!")
+    # if run_coop:
+    #     bm_models = bm_cohort.get_cohort_models()
+    #     _, bm_dims = bm_cohort.get_cohort_info()    
+    #     coop = Coop(config, bm_models, bm_dims, [train_loader, val_loader])
+    #     coop.train()
+    #     res = coop.test(test_loader)
+    #     res_list.append(res)
+    #     best_rho['coop'] = coop.best_rho
+    #     print(f"Finished running coop!")
 
 
     #------------------------------#
-    #  Train and test Meta Fuse   #
+    #  Train and test Meta Fuse    #
     #------------------------------#
     cohort_models = meta_cohort.get_cohort_models()
     _, dim_pairs = meta_cohort.get_cohort_info()
     ###### Only change the two following.
-    metafuse = Trainer(config, cohort_models, [train_loader, val_loader]) # New trainer function. 
+    metafuse = Trainer_new(config, cohort_models, [train_loader, val_loader]) # New trainer function. 
     metafuse.train() 
     res = metafuse.test(test_loader) # No need to change test: simple_averaging in test_regresion() also # performance of each student on the test data, cohort_accuracy: automaticall printed and stored. 
     res = {f"metafusion_{k}": v for k, v in res.items()}
@@ -252,13 +244,12 @@ def run_single_experiment(config, extractor_config, n, random_state,
     #----------------------------#
     # Proposed model: Joint train#
     #----------------------------#
-    joint_extractor = Extractors(mod_outs, dim_modalities, train_loader, val_loader)
-    if (extractor_type == 'encoder') or (extractor_type == 'separate'):
-        _ = joint_extractor.get_encoder_extractors(mod_hiddens, separate=separate, config=extractor_config)
-    elif extractor_type == 'PCA':
-        _ = joint_extractor.get_PCA_extractors()
-    joint_cohort = Cohorts(extractors=joint_extractor, combined_hidden_layers=combined_hiddens, output_dim=output_dim,
-                          is_mod_static=is_mod_static, freeze_mod_extractors=freeze_mod_extractors)
+    # joint_extractor = Extractors(mod_outs, dim_modalities, train_loader, val_loader)
+    # if (extractor_type == 'encoder') or (extractor_type == 'separate'):
+    #     _ = joint_extractor.get_encoder_extractors(mod_hiddens, separate=separate, config=extractor_config)
+    # elif extractor_type == 'PCA':
+    #     _ = joint_extractor.get_PCA_extractors()
+    joint_cohort = Cohorts_new(dim_modalities = dim_modalities, num_modalities= num_modalities, mod_hiddens  = mod_hiddens, output_dim=output_dim)
 
     # ------------------------------#
     #  Train and test Joint train  #
@@ -266,7 +257,7 @@ def run_single_experiment(config, extractor_config, n, random_state,
     cohort_models = joint_cohort.get_cohort_models()
     _, dim_pairs = joint_cohort.get_cohort_info()
     ###### Only change the two following.
-    jointmodel = Trainer_Joint(config, cohort_models, [train_loader, val_loader]) # New trainer function. 
+    jointmodel = Trainer_Joint_new(config, cohort_models, [train_loader, val_loader]) # New trainer function. 
     jointmodel.train('marginal') 
     res = jointmodel.test(test_loader) # No need to change test: simple_averaging in test_regresion() also # performance of each student on the test data, cohort_accuracy: automaticall printed and stored. 
     res = {f"jointlearning_{k}": v for k, v in res.items()}
@@ -282,13 +273,12 @@ def run_single_experiment(config, extractor_config, n, random_state,
     #----------------------------#
     # Proposed model: Negative Correlation Learning#
     #----------------------------#
-    joint_extractor = Extractors(mod_outs, dim_modalities, train_loader, val_loader)
-    if (extractor_type == 'encoder') or (extractor_type == 'separate'):
-        _ = joint_extractor.get_encoder_extractors(mod_hiddens, separate=separate, config=extractor_config)
-    elif extractor_type == 'PCA':
-        _ = joint_extractor.get_PCA_extractors()
-    NCL_cohort = Cohorts(extractors=joint_extractor, combined_hidden_layers=combined_hiddens, output_dim=output_dim,
-                            is_mod_static=is_mod_static, freeze_mod_extractors=freeze_mod_extractors)
+    # joint_extractor = Extractors(mod_outs, dim_modalities, train_loader, val_loader)
+    # if (extractor_type == 'encoder') or (extractor_type == 'separate'):
+    #     _ = joint_extractor.get_encoder_extractors(mod_hiddens, separate=separate, config=extractor_config)
+    # elif extractor_type == 'PCA':
+    #     _ = joint_extractor.get_PCA_extractors()
+    NCL_cohort = Cohorts_new(dim_modalities = dim_modalities, num_modalities= num_modalities, mod_hiddens  = mod_hiddens, output_dim=output_dim)
 
     #------------------------------#
     #  Train and test NCL train  #
@@ -296,7 +286,7 @@ def run_single_experiment(config, extractor_config, n, random_state,
     NCL_models = NCL_cohort.get_cohort_models()
     _, dim_pairs = NCL_cohort.get_cohort_info()
     ###### Only change the two following.
-    ncl_model = Trainer_NCL(config, NCL_models, [train_loader, val_loader]) # New trainer function. 
+    ncl_model = Trainer_NCL_new(config, NCL_models, [train_loader, val_loader]) # New trainer function. 
     ncl_model.train() 
     res = ncl_model.test(test_loader) # No need to change test: simple_averaging in test_regresion() also # performance of each student on the test data, cohort_accuracy: automaticall printed and stored. 
     res = {f"ncl_{k}": v for k, v in res.items()}
@@ -313,13 +303,12 @@ def run_single_experiment(config, extractor_config, n, random_state,
     #----------------------------#
     # Proposed model: Shapley train#
     #----------------------------#
-    joint_extractor = Extractors(mod_outs, dim_modalities, train_loader, val_loader)
-    if (extractor_type == 'encoder') or (extractor_type == 'separate'):
-        _ = joint_extractor.get_encoder_extractors(mod_hiddens, separate=separate, config=extractor_config)
-    elif extractor_type == 'PCA':
-        _ = joint_extractor.get_PCA_extractors()
-    joint_cohort = Cohorts(extractors=joint_extractor, combined_hidden_layers=combined_hiddens, output_dim=output_dim,
-                        is_mod_static=is_mod_static, freeze_mod_extractors=freeze_mod_extractors)
+    # joint_extractor = Extractors(mod_outs, dim_modalities, train_loader, val_loader)
+    # if (extractor_type == 'encoder') or (extractor_type == 'separate'):
+    #     _ = joint_extractor.get_encoder_extractors(mod_hiddens, separate=separate, config=extractor_config)
+    # elif extractor_type == 'PCA':
+    #     _ = joint_extractor.get_PCA_extractors()
+    joint_cohort = Cohorts_new(dim_modalities = dim_modalities, num_modalities= num_modalities, mod_hiddens  = mod_hiddens, output_dim=output_dim)
 
     #------------------------------#
     #  Train and test shapley train  #
@@ -327,7 +316,7 @@ def run_single_experiment(config, extractor_config, n, random_state,
     cohort_models = joint_cohort.get_cohort_models()
     _, dim_pairs = joint_cohort.get_cohort_info()
     ###### Only change the two following.
-    jointmodel = Trainer_Joint(config, cohort_models, [train_loader, val_loader]) # New trainer function. 
+    jointmodel = Trainer_Joint_new(config, cohort_models, [train_loader, val_loader]) # New trainer function. 
     jointmodel.train('shapley') 
     res = jointmodel.test(test_loader) # No need to change test: simple_averaging in test_regresion() also # performance of each student on the test data, cohort_accuracy: automaticall printed and stored. 
     res = {f"shapley_{k}": v for k, v in res.items()}
@@ -371,9 +360,7 @@ for i in tqdm(range(1, repetition+1), desc="Repetitions", leave=True, position=0
     set_random_seed(random_state)
 
     # Run experiment
-    tmp = run_single_experiment(config, extractor_config, n, random_state, 
-                                mod_outs, combined_hiddens, mod_hiddens,
-                                separate, is_mod_static, freeze_mod_extractors,
+    tmp = run_single_experiment(config, extractor_config, n, random_state, mod_hiddens,
                                 run_oracle=False, run_coop=True, run_all_at_once=False)
     
     results.append(tmp)

@@ -146,7 +146,7 @@ def get_weights_by_clustering(losses, max_k=10, optimal_k=None,
             optimal_k = compute_optimal_k_with_silhouette(losses.reshape(-1,1), k_list, random_state=random_state)
         elif method == 'elbow':
             optimal_k = compute_elbow_point(losses.reshape(-1,1), k_list, len(losses),random_state=random_state)
-
+    # print(optimal_k)
     # Step 2: Perform K-means clustering with the optimal number of clusters
     optimal_k = int(optimal_k)
     kmeans = KMeans(n_clusters=optimal_k, verbose=verbose, random_state=random_state)

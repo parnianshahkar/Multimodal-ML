@@ -121,6 +121,7 @@ class Fuse_Net(nn.Module):
 
 class Cohorts:
     def __init__(self, extractors, combined_hidden_layers, output_dim, # A new class 
+    def __init__(self, extractors, combined_hidden_layers, output_dim, # A new class 
                  is_mod_static = None, freeze_mod_extractors = None):
         self.extractor_models = extractors.extractors  # The actual extraction models
         self.extractors = extractors  # The extractor class object
@@ -135,6 +136,7 @@ class Cohorts:
         self.model_structures = []
 
         # Create combinations of extractors for each modality
+        # No need for iterations, no need for extractors just get dim_modalities and actual modalities and define new student for each modality. 
         # No need for iterations, no need for extractors just get dim_modalities and actual modalities and define new student for each modality. 
         extractor_combinations = itertools.product(*self.extractor_models)
         dim_combinations = itertools.product(*self.extractors.mod_outs)
@@ -151,12 +153,12 @@ class Cohorts:
                 output_dim=self.output_dim
             )
 
-            # model = Fuse_Net( # concatenating two models : extractor and MLP, now no need for that. 
-            #     feature_extractors=extractor_combination,
-            #     combined_model=combined_model,
-            #     is_static_list=self.is_mod_static,
-            #     freeze_extractors_list=self.freeze_mod_extractors
-            # )
+            model = Fuse_Net( # concatenating two models : extractor and MLP, now no need for that. 
+                feature_extractors=extractor_combination,
+                combined_model=combined_model,
+                is_static_list=self.is_mod_static,
+                freeze_extractors_list=self.freeze_mod_extractors
+            )
 
             self.cohort_models.append(model)
             self.cohort_dims.append(dim_combination)
@@ -169,6 +171,53 @@ class Cohorts:
             }
             self.model_structures.append(model_structure)
             counter += 1
+
+        return self.cohort_models
+
+    def get_cohort_info(self):
+        if not hasattr(self, 'cohort_models'):
+            print("No model information yet, get models first.")
+
+        return len(self.cohort_models), self.cohort_dims
+
+
+class Cohorts_new:
+    def __init__(self, dim_modalities, num_modalities, mod_hiddens, output_dim):
+        self.dim_modalities = dim_modalities #example [500,400]
+        self.num_modalities = num_modalities # example: 2
+        self.mod_hiddens = mod_hiddens
+        self.output_dim = output_dim
+
+
+    def get_cohort_models(self):
+        self.cohort_models = []
+        self.cohort_dims = []
+        self.model_structures = []
+
+        # Create combinations of extractors for each modality
+        # No need for iterations, no need for extractors just get dim_modalities and actual modalities and define new student for each modality. 
+        # extractor_combinations = itertools.product(*self.extractor_models)
+        # dim_combinations = itertools.product(*self.extractors.mod_outs)
+
+
+        for i in range(self.num_modalities):
+            model = MLP_Net(
+                input_dim=self.dim_modalities[i],
+                hidden_dims=self.mod_hiddens[i],
+                output_dim=self.output_dim
+            )
+
+            self.cohort_models.append(model)
+            self.cohort_dims.append(self.dim_modalities[i])
+
+            # Store the structure for debugging or verification purposes
+            model_structure = {
+                'model_num': i,
+                # 'extractors': [ext.__class__.__name__ for ext in extractor_combination],
+                'hidden_layers': self.mod_hiddens[i]
+            }
+            self.model_structures.append(model_structure)
+
 
         return self.cohort_models
 
