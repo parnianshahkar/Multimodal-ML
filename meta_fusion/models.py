@@ -121,7 +121,6 @@ class Fuse_Net(nn.Module):
 
 class Cohorts:
     def __init__(self, extractors, combined_hidden_layers, output_dim, # A new class 
-    def __init__(self, extractors, combined_hidden_layers, output_dim, # A new class 
                  is_mod_static = None, freeze_mod_extractors = None):
         self.extractor_models = extractors.extractors  # The actual extraction models
         self.extractors = extractors  # The extractor class object
