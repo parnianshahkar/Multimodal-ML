@@ -146,7 +146,7 @@ class Cohorts:
                 continue
 
             combined_input_dim = sum(dim_combination)
-            model = MLP_Net(
+            combined_model = MLP_Net(
                 input_dim=combined_input_dim,
                 hidden_dims=self.combined_hidden_layers,
                 output_dim=self.output_dim
