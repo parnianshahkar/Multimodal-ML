@@ -21,7 +21,7 @@ from meta_fusion.third_party import *
 from meta_fusion.synthetic_data import PrepareSyntheticData
 from meta_fusion.config import *
 from meta_fusion.methodsextra import *
-
+from meta_fusion.methodsextra_new import *
 
 
 #########################
