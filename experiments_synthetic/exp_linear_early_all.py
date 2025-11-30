@@ -47,7 +47,7 @@ dim_modalities = [500, 400, 100, 500, 400, 100] # New: last three are full noise
 dim_latent = [20, 30, 10, 20, 30, 10, 0] # New: three are full noise, last one is the shared component 
 noise_ratios = [0.6, 0.6, 0.6, 1, 1, 1] # New: increased noise level, and last three are full noise. 
 # change to quadratic, trigger overfitting: more noise, quadratic function.
-trans_type = ["quadratic", "quadratic", "quadratic", "quadratic"] # New: last one is shared, change to quadratic
+trans_type = ["quadratic", "quadratic", "quadratic", "quadratic", "quadratic", "quadratic", "quadratic"] # New: last one is shared, change to quadratic
 mod_prop = [1, 1, 1, 1,1,1, 0, 0]
 interactive_prop = 0
 
