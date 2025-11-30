@@ -56,7 +56,7 @@ interactive_prop = 0
 num_modalities = len(dim_modalities)
 print('num_modalities', num_modalities)
 combined_hiddens = [128, 64] # only used for benchmarks
-mod_hiddens = [[256], [256], [256]] # hidden layer for each modality
+mod_hiddens = [[256] for _ in range(num_modalities)] # hidden layer for each modality
 
 # data parameters
 data_name = 'regression'
