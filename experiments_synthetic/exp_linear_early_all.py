@@ -43,11 +43,12 @@ repetition=1
 
 # Data model parameters
 n = 4000
-dim_modalities = [500, 400, 100]
-dim_latent = [20, 30, 10, 0] # last one is the shared component 
-noise_ratios = [0.4, 0.4, 0.4]
-trans_type = ["linear", "linear", "linear", "linear"] #last one is shared
-mod_prop = [1, 1, 1, 0, 0]
+dim_modalities = [500, 400, 100, 500, 400, 100] # New: last three are full noise
+dim_latent = [20, 30, 10, 20, 30, 10, 0] # New: three are full noise, last one is the shared component 
+noise_ratios = [0.8, 0.8, 0.8, 1, 1, 1] # New: increased noise level, and last three are full noise. 
+# change to quadratic, trigger overfitting: more noise, quadratic function.
+trans_type = ["quadratic", "quadratic", "quadratic", "quadratic"] # New: last one is shared, change to quadratic
+mod_prop = [1, 1, 1, 1,1,1, 0, 0]
 interactive_prop = 0
 
 # mod_outs = [[0, 200, 300, 400, 500], [0, 100, 200, 300, 400]]
