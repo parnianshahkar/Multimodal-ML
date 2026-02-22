@@ -36,7 +36,3 @@ This repository is **mainly based on** the `meta_fusion` codebase:
 ## License
 
 This project includes code derived from the upstream repository. Please ensure you comply with the upstream license and retain required notices.
-
-## Citation
-
-If you use this repository, please cite the upstream `meta_fusion` project as appropriate, and cite this work/repository for Shapley-fusion when relevant.
