@@ -291,3 +291,216 @@ class PrepareSyntheticData:
         oracle_test_loader = DataLoader(oracle_test_dataset, batch_size=test_batch_size, shuffle=False)
 
         return train_loader, val_loader, test_loader, oracle_train_loader, oracle_val_loader, oracle_test_loader
+
+
+    def apply_missing_modalities(
+        self,
+        train_loader,
+        val_loader,
+        test_loader,
+        modality_fractions,
+        random_state=None,
+        missing_value=10.0,
+    ):
+        """
+        Given existing loaders and desired modality presence fractions, return
+        new loaders where whole modalities are randomly set to a missing value.
+
+        Args:
+            train_loader, val_loader, test_loader:
+                DataLoader objects created by get_data_loaders, whose datasets
+                are based on CustomDataset and self.dim_modalities.
+            modality_fractions (list[float]):
+                Length == num_modalities. Each entry in [0,1] is the fraction
+                of datapoints that *observe* that modality. For example,
+                [1, 1, 0.5] means the first two modalities are always present,
+                and the third is present for 50% of datapoints and missing for 50%.
+            random_state (int, optional):
+                Seed for reproducible masking.
+            missing_value (float):
+                Value to use for missing modalities (default 0.0).
+
+        Returns:
+            new_train_loader, new_val_loader, new_test_loader
+        """
+        if not hasattr(self, "dim_modalities"):
+            raise ValueError(
+                "dim_modalities not set. Call get_data_loaders on this "
+                "PrepareSyntheticData instance before apply_missing_modalities."
+            )
+
+        if len(modality_fractions) != len(self.dim_modalities):
+            raise ValueError(
+                f"Expected modality_fractions of length {len(self.dim_modalities)}, "
+                f"got {len(modality_fractions)}."
+            )
+
+        # Clamp fractions to [0,1] to avoid accidental issues
+        modality_fractions = [float(max(0.0, min(1.0, p))) for p in modality_fractions]
+
+        if random_state is not None:
+            torch.manual_seed(random_state)
+            np.random.seed(random_state)
+
+        def _rebuild_loader_with_missing(loader, batch_size, shuffle):
+            # Collect full tensors for modalities and targets from the loader
+            all_modalities = [[] for _ in range(self.num_modalities)]
+            all_targets = []
+
+            for batch in loader:
+                modalities, target = batch[:-1], batch[-1]
+                for i in range(self.num_modalities):
+                    all_modalities[i].append(modalities[i])
+                all_targets.append(target)
+
+            # Concatenate along batch dimension
+            all_modalities = [torch.cat(m_list, dim=0) for m_list in all_modalities]
+            all_targets = torch.cat(all_targets, dim=0)
+
+            N = all_targets.size(0)
+
+            # Apply random missingness per modality
+            for i, frac_present in enumerate(modality_fractions):
+                if frac_present >= 1.0:
+                    continue  # always present
+                if frac_present <= 0.0:
+                    # completely missing: set entire modality to missing_value
+                    all_modalities[i].fill_(missing_value)
+                    continue
+
+                # Bernoulli mask for presence (1 = present, 0 = missing)
+                mask = (torch.rand(N, device=all_modalities[i].device) < frac_present).float()
+
+                # Reshape mask for broadcasting over feature dimensions
+                view_shape = [N] + [1] * (all_modalities[i].dim() - 1)
+                mask = mask.view(*view_shape)
+
+                all_modalities[i] = all_modalities[i] * mask + (1.0 - mask) * missing_value
+
+            # Flatten to 2D and stack into a single torch tensor (no NumPy conversion)
+            modality_tensors_2d = [m.reshape(N, -1).cpu() for m in all_modalities]
+            target_tensor_2d = all_targets.reshape(N, -1).cpu()
+            stacked_data = torch.cat(modality_tensors_2d + [target_tensor_2d], dim=1)
+
+            dataset = CustomDataset(stacked_data, self.dim_modalities)
+            return DataLoader(dataset, batch_size=batch_size, shuffle=shuffle)
+
+        new_train_loader = _rebuild_loader_with_missing(
+            train_loader,
+            batch_size=train_loader.batch_size,
+            shuffle=True,
+        )
+        new_val_loader = _rebuild_loader_with_missing(
+            val_loader,
+            batch_size=val_loader.batch_size,
+            shuffle=False,
+        )
+        new_test_loader = _rebuild_loader_with_missing(
+            test_loader,
+            batch_size=test_loader.batch_size,
+            shuffle=False,
+        )
+
+        return new_train_loader, new_val_loader, new_test_loader
+
+
+    def filter_fully_observed(
+        self,
+        train_loader,
+        val_loader,
+        test_loader,
+        missing_value=10.0,
+    ):
+        """
+        Given loaders (potentially with missing modalities), return new loaders
+        that contain only samples where *all* modalities are fully observed
+        (i.e. no element equals `missing_value` in any modality tensor).
+
+        Args:
+            train_loader, val_loader, test_loader:
+                DataLoader objects whose datasets are based on CustomDataset.
+            missing_value (float):
+                Value used to encode missing modalities.
+
+        Returns:
+            new_train_loader, new_val_loader, new_test_loader
+        """
+
+        if not hasattr(self, "dim_modalities"):
+            raise ValueError(
+                "dim_modalities not set. Call get_data_loaders on this "
+                "PrepareSyntheticData instance before filter_fully_observed."
+            )
+
+        def _filter_loader(loader, batch_size, shuffle):
+            all_modalities = [[] for _ in range(self.num_modalities)]
+            all_targets = []
+
+            for batch in loader:
+                modalities, target = batch[:-1], batch[-1]
+
+                # Build mask of samples that have no missing_value in any modality
+                batch_mask = None
+                for m in modalities[: self.num_modalities]:
+                    # Per-sample mask: True if all elements != missing_value
+                    if m.dim() == 1:
+                        present = (m != missing_value)
+                    else:
+                        present = (m != missing_value).view(m.size(0), -1).all(dim=1)
+
+                    batch_mask = present if batch_mask is None else (batch_mask & present)
+
+                if batch_mask is None:
+                    continue
+
+                if not batch_mask.any():
+                    continue  # no fully observed samples in this batch
+
+                # Select only fully observed samples
+                idx = batch_mask.nonzero(as_tuple=True)[0]
+                filtered_modalities = [m[idx] for m in modalities[: self.num_modalities]]
+                filtered_target = target[idx]
+
+                for i in range(self.num_modalities):
+                    all_modalities[i].append(filtered_modalities[i])
+                all_targets.append(filtered_target)
+
+            if len(all_targets) == 0:
+                # No fully observed samples; return an empty loader
+                empty_data = torch.zeros(
+                    (0, sum(np.prod(d) for d in self.dim_modalities) + 1),
+                    dtype=torch.float32,
+                )
+                empty_dataset = CustomDataset(empty_data, self.dim_modalities)
+                return DataLoader(empty_dataset, batch_size=batch_size, shuffle=shuffle)
+
+            # Concatenate along batch dimension
+            all_modalities = [torch.cat(m_list, dim=0) for m_list in all_modalities]
+            all_targets = torch.cat(all_targets, dim=0)
+
+            N = all_targets.size(0)
+
+            # Flatten to 2D and stack into a single torch tensor (no NumPy conversion)
+            modality_tensors_2d = [m.reshape(N, -1).cpu() for m in all_modalities]
+            target_tensor_2d = all_targets.reshape(N, -1).cpu()
+            stacked_data = torch.cat(modality_tensors_2d + [target_tensor_2d], dim=1)
+            dataset = CustomDataset(stacked_data, self.dim_modalities)
+            return DataLoader(dataset, batch_size=batch_size, shuffle=shuffle)
+
+        new_train_loader = _filter_loader(
+            train_loader,
+            batch_size=train_loader.batch_size,
+            shuffle=True,
+        )
+        new_val_loader = _filter_loader(
+            val_loader,
+            batch_size=val_loader.batch_size,
+            shuffle=False,
+        )
+        new_test_loader = _filter_loader(
+            test_loader,
+            batch_size=test_loader.batch_size,
+            shuffle=False,
+        )
+
+        return new_train_loader, new_val_loader, new_test_loader

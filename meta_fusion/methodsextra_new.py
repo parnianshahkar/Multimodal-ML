@@ -46,12 +46,15 @@ class Trainer_Joint_new(Trainer):
     #-----------------------#
     #---- Main Functions ---#
     #-----------------------#
-    def train(self, mode):
+    def train(self, mode, missing_value=None):
         """
         Main training function that performs the following:
         1. Trains model cohort for user specified list of disagreement penalties;
         2. Chooses and record the best cohort via cross-validation.
         """
+        # If provided, treat this value as the "missing modality" sentinel
+        # and only train/evaluate on modalities that are present per sample.
+        self.missing_value = missing_value
         
         print("Start training student cohort...")
 
@@ -81,12 +84,15 @@ class Trainer_Joint_new(Trainer):
             print("Done!")
 
 
-    def test(self, test_loader):
+    def test(self, test_loader, missing_value=None):
         """
         Main testing function that performs the following:
         1. Load the best cohort chosen by cross-validation;
         2. Evaluate the method performance (including various user-specified ensembles) on the test data.
         """
+        # If provided, treat this value as the "missing modality" sentinel
+        # and ensemble only over modalities that are present per sample.
+        self.missing_value = missing_value
 
         # Make sure the best model is loaded
         # best_val_task_losses = self.load_checkpoints(self.best_rho)
@@ -132,7 +138,7 @@ class Trainer_Joint_new(Trainer):
 
         ###############################
 
-        best_val_task_losses = self.validate()
+        best_val_task_losses = self.validate(missing_value=getattr(self, "missing_value", None))
         best_val_task_losses = [best_val_task_losses[i].avg for i in range(self.model_num)]
 
         #############################
@@ -144,57 +150,118 @@ class Trainer_Joint_new(Trainer):
                     modalities = [mod.cuda() for mod in modalities]
                     target = target.cuda()
 
-                # Forward pass for each model
-                outputs = []
-                for i, model in enumerate(self.models):
-                    output = model(modalities[i])
-                    outputs.append(output)
-                    cohort_mse[i].update(self.loss_mse(output, target), target.size()[0])
+                missing_value = getattr(self, "missing_value", None)
+                if missing_value is None:
+                    # Forward pass for each model
+                    outputs = []
+                    for mi, model in enumerate(self.models):
+                        output = model(modalities[mi])
+                        outputs.append(output)
+                        cohort_mse[mi].update(self.loss_mse(output, target), target.size()[0])
 
-                outputs_stack = torch.stack(outputs).to("cpu")  # Shape: (self.model_num, batch_size, regression_outputs)
+                    outputs_stack = torch.stack(outputs).to("cpu")  # (model_num, B, 1)
 
-                for i, ensemble_method in enumerate(ensemble_methods):
-                    # Apply ensemble method
-                    if ensemble_method == "simple_average":
-                        final_output = torch.mean(outputs_stack, dim=0)
+                    for ei, ensemble_method in enumerate(ensemble_methods):
+                        if ensemble_method == "simple_average":
+                            final_output = torch.mean(outputs_stack, dim=0)
+                        elif ensemble_method == "weighted_average":
+                            weights = get_weights_by_task_loss(best_val_task_losses)
+                            weights = weights.unsqueeze(1).unsqueeze(2)
+                            final_output = torch.sum(weights * outputs_stack, dim=0)
+                        elif ensemble_method == "meta_learner":
+                            outputs_concat = torch.cat(outputs, dim=1)
+                            final_output = self.meta_learner(outputs_concat)
+                        elif ensemble_method == "best_single":
+                            best_model = best_val_task_losses.index(min(best_val_task_losses))
+                            final_output = outputs_stack[best_model]
+                        elif ensemble_method == "greedy_ensemble":
+                            weights = get_weights_by_task_loss(best_val_task_losses)[self.ens_idxs]
+                            weights /= torch.sum(weights)
+                            weights = weights.unsqueeze(1).unsqueeze(2)
+                            final_output = torch.sum(weights * outputs_stack[self.ens_idxs], dim=0)
+                        elif ensemble_method == "bagging_ensemble":
+                            bagging_num = kwargs.get('bagging_num', None)
+                            if bagging_num is None:
+                                bagging_num = int(0.6 * self.model_num)
+                            selected_models = [random.choice(range(self.model_num)) for _ in range(bagging_num)]
+                            bagged_outputs = outputs_stack[selected_models]
+                            final_output = torch.mean(bagged_outputs, dim=0)
+                        else:
+                            raise ValueError(
+                                f"Unknown ensemble method '{ensemble_method}', valid options are {regression_ensembles}."
+                            )
 
-                    elif ensemble_method == "weighted_average":
-                        weights = get_weights_by_task_loss(best_val_task_losses)
-                        weights = weights.unsqueeze(1).unsqueeze(2)
-                        final_output = torch.sum(weights * outputs_stack, dim=0)
+                        if self.use_gpu:
+                            final_output = final_output.cuda()
+                        method_mse[ei].update(self.loss_mse(final_output, target), target.size()[0])
+                else:
+                    # Group samples by which modalities are present, and only ensemble over present modalities.
+                    patterns = self._group_indices_by_availability(modalities, missing_value)
+                    for pattern, idx in patterns.items():
+                        present_models = [k for k, ok in enumerate(pattern) if ok]
+                        if len(present_models) == 0:
+                            continue
 
-                    elif ensemble_method == "meta_learner":
-                        outputs_concat = torch.cat(outputs, dim=1)
-                        final_output = self.meta_learner(outputs_concat)
-                    
-                    elif ensemble_method == "best_single":
-                        best_model = best_val_task_losses.index(min(best_val_task_losses))
-                        final_output = outputs_stack[best_model]
-                    
-                    elif ensemble_method == "greedy_ensemble":
-                        weights = get_weights_by_task_loss(best_val_task_losses)[self.ens_idxs]
-                        weights /= torch.sum(weights)
-                        weights = weights.unsqueeze(1).unsqueeze(2)
-                        final_output = torch.sum(weights * outputs_stack[self.ens_idxs], dim=0)
+                        mods_g = [modalities[k][idx] for k in range(self.model_num)]
+                        target_g = target[idx]
 
-                    elif ensemble_method == "bagging_ensemble":
-                        bagging_num = kwargs.get('bagging_num', None)
-                        # Determine the number of models to bag
-                        if bagging_num is None:
-                            bagging_num = int(0.6 * self.model_num)  # Default to 60% of models
+                        outputs_present = []
+                        for mi in present_models:
+                            out = self.models[mi](mods_g[mi])
+                            outputs_present.append(out)
+                            cohort_mse[mi].update(self.loss_mse(out, target_g), target_g.size(0))
 
-                        # Perform bagging on the models
-                        selected_models = [random.choice(range(self.model_num)) for _ in range(bagging_num)]
-                        bagged_outputs = outputs_stack[selected_models]
-                        final_output = torch.mean(bagged_outputs, dim=0)
+                        outputs_stack = torch.stack(outputs_present).to("cpu")  # (k, Bg, 1)
 
-                    else:
-                        raise ValueError(f"Unknown ensemble method '{ensemble_method}', \
-                                        valid options are {regression_ensembles}.")
+                        # Precompute weights restricted to present models when needed
+                        weights_all = get_weights_by_task_loss(best_val_task_losses)
+                        for ei, ensemble_method in enumerate(ensemble_methods):
+                            if ensemble_method == "simple_average":
+                                final_output = torch.mean(outputs_stack, dim=0)
+                            elif ensemble_method == "weighted_average":
+                                w = weights_all[present_models]
+                                w = w / torch.sum(w)
+                                w = w.unsqueeze(1).unsqueeze(2)
+                                final_output = torch.sum(w * outputs_stack, dim=0)
+                            elif ensemble_method == "meta_learner":
+                                # Build full concat input, filling missing modalities with zeros
+                                full_outputs = []
+                                for mi in range(self.model_num):
+                                    if mi in present_models:
+                                        j = present_models.index(mi)
+                                        full_outputs.append(outputs_present[j])
+                                    else:
+                                        full_outputs.append(torch.zeros_like(outputs_present[0]))
+                                outputs_concat = torch.cat(full_outputs, dim=1)
+                                final_output = self.meta_learner(outputs_concat)
+                            elif ensemble_method == "best_single":
+                                best_model = min(present_models, key=lambda m: best_val_task_losses[m])
+                                j = present_models.index(best_model)
+                                final_output = outputs_stack[j]
+                            elif ensemble_method == "greedy_ensemble":
+                                chosen = [m for m in getattr(self, "ens_idxs", list(range(self.model_num))) if m in present_models]
+                                if len(chosen) == 0:
+                                    final_output = torch.mean(outputs_stack, dim=0)
+                                else:
+                                    w = weights_all[chosen]
+                                    w = w / torch.sum(w)
+                                    chosen_pos = [present_models.index(m) for m in chosen]
+                                    w = w.unsqueeze(1).unsqueeze(2)
+                                    final_output = torch.sum(w * outputs_stack[chosen_pos], dim=0)
+                            elif ensemble_method == "bagging_ensemble":
+                                bagging_num = kwargs.get('bagging_num', None)
+                                if bagging_num is None:
+                                    bagging_num = max(1, int(0.6 * len(present_models)))
+                                selected = [random.choice(range(len(present_models))) for _ in range(bagging_num)]
+                                final_output = torch.mean(outputs_stack[selected], dim=0)
+                            else:
+                                raise ValueError(
+                                    f"Unknown ensemble method '{ensemble_method}', valid options are {regression_ensembles}."
+                                )
 
-                    if self.use_gpu:
-                        final_output = final_output.cuda()
-                    method_mse[i].update(self.loss_mse(final_output, target), target.size()[0])
+                            if self.use_gpu:
+                                final_output = final_output.cuda()
+                            method_mse[ei].update(self.loss_mse(final_output, target_g), target_g.size(0))
             
             for i, ensemble_method in enumerate(ensemble_methods):
                 # Convert to float if the value is a tensor
@@ -249,65 +316,135 @@ class Trainer_Joint_new(Trainer):
                     modalities = [mod.cuda() for mod in modalities]
                     target = target.cuda()
 
-                # Forward pass for each model
-                outputs = []
-                for i, model in enumerate(self.models):
-                    output = model(modalities[i])
-                    outputs.append(output)
-                    cohort_accuracy[i].update(calculate_accuracy(output, target), target.size()[0])
-                outputs_stack = torch.stack(outputs)  # Shape: (self.model_num, batch_size, num_classes)
+                missing_value = getattr(self, "missing_value", None)
+                if missing_value is None:
+                    outputs = []
+                    for mi, model in enumerate(self.models):
+                        output = model(modalities[mi])
+                        outputs.append(output)
+                        cohort_accuracy[mi].update(calculate_accuracy(output, target), target.size()[0])
+                    outputs_stack = torch.stack(outputs)  # (model_num, B, C)
 
-                #pdb.set_trace()
+                    for ei, ensemble_method in enumerate(ensemble_methods):
+                        if ensemble_method == "simple_average":
+                            final_output = torch.mean(outputs_stack, dim=0)
+                            method_accuracy[ei].update(calculate_accuracy(final_output, target), target.size()[0])
+                        elif ensemble_method == "weighted_average":
+                            weights = get_weights_by_task_loss(best_val_task_losses)
+                            final_output = torch.sum(weights.unsqueeze(1).unsqueeze(2) * outputs_stack, dim=0)
+                            method_accuracy[ei].update(calculate_accuracy(final_output, target), target.size()[0])
+                        elif ensemble_method == "majority_voting":
+                            final_pred = torch.mode(outputs_stack.argmax(dim=2), dim=0).values
+                            acc = final_pred.eq(target.view_as(final_pred)).sum().item() / target.size()[0]
+                            method_accuracy[ei].update(acc, target.size()[0])
+                        elif ensemble_method == "weighted_voting":
+                            weights = get_weights_by_task_loss(best_val_task_losses)
+                            top_preds = torch.argmax(outputs_stack, dim=2)
+                            num_classes = outputs_stack.shape[2]
+                            batch_size = outputs_stack.shape[1]
+                            weighted_votes = torch.zeros((batch_size, num_classes), device=outputs_stack.device)
+                            for k, model_preds in enumerate(top_preds):
+                                weighted_votes.scatter_add_(
+                                    1,
+                                    model_preds.unsqueeze(1),
+                                    torch.full((batch_size, 1), weights[k], device=outputs_stack.device),
+                                )
+                            final_pred = torch.argmax(weighted_votes, dim=1)
+                            acc = final_pred.eq(target.view_as(final_pred)).sum().item() / target.size()[0]
+                            method_accuracy[ei].update(acc, target.size()[0])
+                        elif ensemble_method == "meta_learner":
+                            outputs_concat = torch.cat(outputs, dim=1)
+                            final_output = self.meta_learner(outputs_concat)
+                            method_accuracy[ei].update(calculate_accuracy(final_output, target), target.size()[0])
+                        elif ensemble_method == "best_single":
+                            best_model = best_val_task_losses.index(min(best_val_task_losses))
+                            final_output = outputs_stack[best_model]
+                            method_accuracy[ei].update(calculate_accuracy(final_output, target), target.size()[0])
+                        elif ensemble_method == "greedy_ensemble":
+                            weights = get_weights_by_task_loss(best_val_task_losses)[self.ens_idxs]
+                            weights /= torch.sum(weights)
+                            weights = weights.unsqueeze(1).unsqueeze(2)
+                            final_output = torch.sum(weights * outputs_stack[self.ens_idxs], dim=0)
+                            method_accuracy[ei].update(calculate_accuracy(final_output, target), target.size()[0])
+                        else:
+                            raise ValueError(
+                                f"Unknown ensemble method '{ensemble_method}', valid options are {classification_ensembles}."
+                            )
+                else:
+                    patterns = self._group_indices_by_availability(modalities, missing_value)
+                    weights_all = get_weights_by_task_loss(best_val_task_losses)
+                    for pattern, idx in patterns.items():
+                        present_models = [k for k, ok in enumerate(pattern) if ok]
+                        if len(present_models) == 0:
+                            continue
+                        mods_g = [modalities[k][idx] for k in range(self.model_num)]
+                        target_g = target[idx]
 
-                for i, ensemble_method in enumerate(ensemble_methods):
-                    # Apply ensemble method
-                    if ensemble_method == "simple_average":
-                        final_output = torch.mean(outputs_stack, dim=0)
-                        method_accuracy[i].update(calculate_accuracy(final_output, target), target.size()[0])
+                        outputs_present = []
+                        for mi in present_models:
+                            out = self.models[mi](mods_g[mi])
+                            outputs_present.append(out)
+                            cohort_accuracy[mi].update(calculate_accuracy(out, target_g), target_g.size(0))
+                        outputs_stack = torch.stack(outputs_present)  # (k, Bg, C)
 
-                    elif ensemble_method == "weighted_average":
-                        weights = get_weights_by_task_loss(best_val_task_losses)                        
-                        final_output = torch.sum(weights.unsqueeze(1).unsqueeze(2) * outputs_stack, dim=0)
-                        method_accuracy[i].update(calculate_accuracy(final_output, target), target.size()[0])
+                        for ei, ensemble_method in enumerate(ensemble_methods):
+                            if ensemble_method == "simple_average":
+                                final_output = torch.mean(outputs_stack, dim=0)
+                            elif ensemble_method == "weighted_average":
+                                w = weights_all[present_models]
+                                w = w / torch.sum(w)
+                                final_output = torch.sum(w.unsqueeze(1).unsqueeze(2) * outputs_stack, dim=0)
+                            elif ensemble_method == "majority_voting":
+                                final_pred = torch.mode(outputs_stack.argmax(dim=2), dim=0).values
+                                acc = final_pred.eq(target_g.view_as(final_pred)).sum().item() / target_g.size()[0]
+                                method_accuracy[ei].update(acc, target_g.size()[0])
+                                continue
+                            elif ensemble_method == "weighted_voting":
+                                w = weights_all[present_models]
+                                w = w / torch.sum(w)
+                                top_preds = torch.argmax(outputs_stack, dim=2)
+                                num_classes = outputs_stack.shape[2]
+                                batch_size = outputs_stack.shape[1]
+                                weighted_votes = torch.zeros((batch_size, num_classes), device=outputs_stack.device)
+                                for k, model_preds in enumerate(top_preds):
+                                    weighted_votes.scatter_add_(
+                                        1,
+                                        model_preds.unsqueeze(1),
+                                        torch.full((batch_size, 1), float(w[k]), device=outputs_stack.device),
+                                    )
+                                final_pred = torch.argmax(weighted_votes, dim=1)
+                                acc = final_pred.eq(target_g.view_as(final_pred)).sum().item() / target_g.size()[0]
+                                method_accuracy[ei].update(acc, target_g.size()[0])
+                                continue
+                            elif ensemble_method == "meta_learner":
+                                full_outputs = []
+                                for mi in range(self.model_num):
+                                    if mi in present_models:
+                                        j = present_models.index(mi)
+                                        full_outputs.append(outputs_present[j])
+                                    else:
+                                        full_outputs.append(torch.zeros_like(outputs_present[0]))
+                                outputs_concat = torch.cat(full_outputs, dim=1)
+                                final_output = self.meta_learner(outputs_concat)
+                            elif ensemble_method == "best_single":
+                                best_model = min(present_models, key=lambda m: best_val_task_losses[m])
+                                j = present_models.index(best_model)
+                                final_output = outputs_stack[j]
+                            elif ensemble_method == "greedy_ensemble":
+                                chosen = [m for m in getattr(self, "ens_idxs", list(range(self.model_num))) if m in present_models]
+                                if len(chosen) == 0:
+                                    final_output = torch.mean(outputs_stack, dim=0)
+                                else:
+                                    w = weights_all[chosen]
+                                    w = w / torch.sum(w)
+                                    chosen_pos = [present_models.index(m) for m in chosen]
+                                    final_output = torch.sum(w.unsqueeze(1).unsqueeze(2) * outputs_stack[chosen_pos], dim=0)
+                            else:
+                                raise ValueError(
+                                    f"Unknown ensemble method '{ensemble_method}', valid options are {classification_ensembles}."
+                                )
 
-                    elif ensemble_method == "majority_voting":
-                        final_pred = torch.mode(outputs_stack.argmax(dim=2), dim=0).values  # Majority voting
-                        acc = final_pred.eq(target.view_as(final_pred)).sum().item() / target.size()[0]
-                        method_accuracy[i].update(acc, target.size()[0])
-
-                    elif ensemble_method == "weighted_voting":
-                        weights = get_weights_by_task_loss(best_val_task_losses)
-                        top_preds = torch.argmax(outputs_stack, dim=2)
-                        num_classes = outputs_stack.shape[2]
-                        batch_size = outputs_stack.shape[1]
-                        weighted_votes = torch.zeros((batch_size, num_classes), device=outputs_stack.device)
-                        for k, model_preds in enumerate(top_preds):
-                            weighted_votes.scatter_add_(1, model_preds.unsqueeze(1), 
-                                                        torch.full((batch_size, 1), weights[k], device=outputs_stack.device))
-                        final_pred = torch.argmax(weighted_votes, dim=1)
-                        acc = final_pred.eq(target.view_as(final_pred)).sum().item() / target.size()[0]
-                        method_accuracy[i].update(acc, target.size()[0])
-
-                    elif ensemble_method == "meta_learner":
-                        outputs_concat = torch.cat(outputs, dim=1)
-                        final_output = self.meta_learner(outputs_concat)
-                        method_accuracy[i].update(calculate_accuracy(final_output, target), target.size()[0])
-                    
-                    elif ensemble_method == "best_single":
-                        best_model = best_val_task_losses.index(min(best_val_task_losses))
-                        final_output = outputs_stack[best_model]
-                        method_accuracy[i].update(calculate_accuracy(final_output, target), target.size()[0])
-                    
-                    elif ensemble_method == "greedy_ensemble":
-                        weights = get_weights_by_task_loss(best_val_task_losses)[self.ens_idxs]
-                        weights /= torch.sum(weights)
-                        weights = weights.unsqueeze(1).unsqueeze(2)
-                        final_output = torch.sum(weights * outputs_stack[self.ens_idxs], dim=0)
-                        method_accuracy[i].update(calculate_accuracy(final_output, target), target.size()[0])
-                        
-                    else:
-                        raise ValueError(f"Unknown ensemble method '{ensemble_method}', \
-                                        valid options are {classification_ensembles}.")
+                            method_accuracy[ei].update(calculate_accuracy(final_output, target_g), target_g.size(0))
 
                 for i, ensemble_method in enumerate(ensemble_methods):
                     full_accuracy[ensemble_method] = method_accuracy[i].avg
@@ -576,6 +713,8 @@ class Trainer_Joint_new(Trainer):
                                 for r in range(len(all_but_one) + 1))]
                 relevant_subsets.append(subsets_with_i)
         
+        missing_value = getattr(self, "missing_value", None)
+
         # Set all models to train mode
         for model in self.models:
             model.train()
@@ -588,22 +727,69 @@ class Trainer_Joint_new(Trainer):
                     modalities = [mod.cuda() for mod in modalities]
                     target = target.cuda()
                 
-                
-                # Forward pass ONCE
-                outputs = [m(x) for m, x in zip(self.models, modalities)]
-                outputs_det = [o.detach() for o in outputs]   # peers as constants
-                
-                # Compute losses based on method
-                if use_approximate:
-                    # Approximate Shapley via permutation sampling
-                    losses = self._compute_approximate_shapley_losses(
-                        outputs, outputs_det, target, num_permutations, losses
-                    )
+                if missing_value is None:
+                    # Forward pass ONCE
+                    outputs = [m(x) for m, x in zip(self.models, modalities)]
+                    outputs_det = [o.detach() for o in outputs]   # peers as constants
+                    if use_approximate:
+                        losses = self._compute_approximate_shapley_losses(
+                            outputs, outputs_det, target, num_permutations, losses
+                        )
+                    else:
+                        losses = self._compute_exact_shapley_losses(
+                            outputs, outputs_det, target, relevant_subsets, losses
+                        )
                 else:
-                    # Exact Shapley computation
-                    losses = self._compute_exact_shapley_losses(
-                        outputs, outputs_det, target, relevant_subsets, losses
-                    )
+                    # Group by available modalities; compute Shapley over the present set only.
+                    patterns = self._group_indices_by_availability(modalities, missing_value)
+                    for pattern, idx in patterns.items():
+                        present_models = [k for k, ok in enumerate(pattern) if ok]
+                        if len(present_models) == 0:
+                            continue
+
+                        mods_g = [modalities[k][idx] for k in range(self.model_num)]
+                        target_g = target[idx]
+                        k = len(present_models)
+
+                        # Forward for present models only
+                        outputs = [self.models[m](mods_g[m]) for m in present_models]
+                        outputs_det = [o.detach() for o in outputs]
+
+                        # Decide exact vs approximate per group
+                        use_approx_group = k > 4
+                        if use_approx_group:
+                            perms = [np.random.permutation(k).tolist() for _ in range(max(1, int(k * np.log(k))))]
+                        else:
+                            all_students = set(range(k))
+                            relevant_subsets_g = []
+                            for ii in range(k):
+                                all_but_one = list(all_students - {ii})
+                                subsets_with_i = [[ii] + list(subset) for subset in chain.from_iterable(
+                                    combinations(all_but_one, r) for r in range(len(all_but_one) + 1)
+                                )]
+                                relevant_subsets_g.append(subsets_with_i)
+
+                        # Update each present model using coalition losses over present set
+                        for local_i, global_i in enumerate(present_models):
+                            loss_i = 0
+                            opt_i = self.optimizers[global_i]
+                            opt_i.zero_grad()
+
+                            if use_approx_group:
+                                for perm in perms:
+                                    pos = perm.index(local_i)
+                                    coalition = perm[:pos] + [local_i]
+                                    pred = (sum(outputs_det[e] for e in coalition) - outputs_det[local_i] + outputs[local_i]) / len(coalition)
+                                    loss_i += self.loss_mse(pred, target_g) / len(perms)
+                            else:
+                                subsets = relevant_subsets_g[local_i]
+                                for subset in subsets:
+                                    pred = (sum(outputs_det[e] for e in subset) - outputs_det[local_i] + outputs[local_i]) / len(subset)
+                                    loss_i += self.loss_mse(pred, target_g) / len(subsets)
+
+                            loss_i.backward(retain_graph=(local_i < k - 1))
+                            opt_i.step()
+                            losses[global_i].update(loss_i.item(), target_g.size(0))
                 
                 # Measure elapsed time
                 toc = time.time()
@@ -719,6 +905,8 @@ class Trainer_Joint_new(Trainer):
         batch_time = AverageMeter()
         losses = AverageMeter()  # Single loss meter for joint training
         
+        missing_value = getattr(self, "missing_value", None)
+
         # Set all models to train mode
         for i in range(self.model_num):
             self.models[i].train()
@@ -730,26 +918,39 @@ class Trainer_Joint_new(Trainer):
                 if self.use_gpu:
                     modalities = [mod.cuda() for mod in modalities]
                     target = target.cuda()
-                
-                # Zero gradients for ALL optimizers
-                for optimizer in self.optimizers:
-                    optimizer.zero_grad()
-                
-                # Forward pass: compute outputs from all models (once!)
-                outputs = [m(x) for m, x in zip(self.models, modalities)]
-                
-                # Average predictions (joint prediction)
-                Joint_prediction = sum(outputs) / self.model_num
-                
-                # Compute loss
-                loss = self.loss_mse(Joint_prediction, target)
-                
-                # Backward pass
-                loss.backward()
-                
-                # Update all optimizers
-                for optimizer in self.optimizers:
-                    optimizer.step()
+
+                if missing_value is None:
+                    # Zero gradients for ALL optimizers
+                    for optimizer in self.optimizers:
+                        optimizer.zero_grad()
+
+                    outputs = [m(x) for m, x in zip(self.models, modalities)]
+                    Joint_prediction = sum(outputs) / self.model_num
+                    loss = self.loss_mse(Joint_prediction, target)
+                    loss.backward()
+                    for optimizer in self.optimizers:
+                        optimizer.step()
+                else:
+                    # Group by available modalities; update only present modalities' models.
+                    patterns = self._group_indices_by_availability(modalities, missing_value)
+                    for pattern, idx in patterns.items():
+                        present_models = [k for k, ok in enumerate(pattern) if ok]
+                        if len(present_models) == 0:
+                            continue
+
+                        mods_g = [modalities[k][idx] for k in range(self.model_num)]
+                        target_g = target[idx]
+
+                        # Only zero/step optimizers for present models
+                        for mi in present_models:
+                            self.optimizers[mi].zero_grad()
+
+                        outputs = [self.models[mi](mods_g[mi]) for mi in present_models]
+                        Joint_prediction = sum(outputs) / len(outputs)
+                        loss = self.loss_mse(Joint_prediction, target_g)
+                        loss.backward()
+                        for mi in present_models:
+                            self.optimizers[mi].step()
                 
                 # Optionally step schedulers
                 # for scheduler in self.schedulers:
@@ -772,6 +973,35 @@ class Trainer_Joint_new(Trainer):
         
         # return losses.avg
         return
+
+
+    def _group_indices_by_availability(self, modalities, missing_value):
+        """
+        Group batch indices by modality availability pattern.
+        A modality is considered present for a sample iff all its elements != missing_value.
+
+        Returns:
+            dict[tuple[bool]] -> 1D LongTensor indices
+        """
+        B = modalities[0].size(0)
+        present = []
+        for m in modalities[: self.model_num]:
+            # (B,) boolean: present if all elements differ from missing_value
+            pm = (m != missing_value).view(B, -1).all(dim=1)
+            present.append(pm)
+
+        patterns = {}
+        # Build integer code per sample for grouping
+        code = torch.zeros(B, dtype=torch.long, device=present[0].device)
+        for i, pm in enumerate(present):
+            code = code + (pm.long() << i)
+
+        unique_codes = torch.unique(code)
+        for c in unique_codes.tolist():
+            idx = (code == c).nonzero(as_tuple=True)[0]
+            pattern = tuple(bool((c >> i) & 1) for i in range(self.model_num))
+            patterns[pattern] = idx
+        return patterns
 
 
     #-----------------------#
@@ -862,7 +1092,7 @@ class Trainer_Joint_new(Trainer):
         
         return best_val_task_losses
 
-    def validate(self):
+    def validate(self, missing_value=None):
         """
         Evaluate the model on the validation set on the current models.
         """
@@ -878,12 +1108,22 @@ class Trainer_Joint_new(Trainer):
                     modalities = [mod.cuda() for mod in modalities]
                     target = target.cuda()
 
-                outputs = [m(x) for m, x in zip(self.models, modalities)]
-                for i in range(self.model_num):
-                    task_loss = self.loss_task(outputs[i], target)
-                
-                    # record loss
-                    task_losses[i].update(task_loss.item(), target.size()[0])
+                if missing_value is None:
+                    outputs = [m(x) for m, x in zip(self.models, modalities)]
+                    for i in range(self.model_num):
+                        task_loss = self.loss_task(outputs[i], target)
+                        task_losses[i].update(task_loss.item(), target.size()[0])
+                else:
+                    patterns = self._group_indices_by_availability(modalities, missing_value)
+                    for pattern, idx in patterns.items():
+                        present_models = [k for k, ok in enumerate(pattern) if ok]
+                        if len(present_models) == 0:
+                            continue
+                        target_g = target[idx]
+                        for mi in present_models:
+                            out = self.models[mi](modalities[mi][idx])
+                            task_loss = self.loss_task(out, target_g)
+                            task_losses[mi].update(task_loss.item(), target_g.size(0))
 
         return task_losses
     
@@ -919,7 +1159,8 @@ class Trainer_NCL_new():
         self.optimal_k = config["optimal_k"]
 
         # ensemble parameters
-        self.ensemble_methods = config["ensemble_methods"]
+        # Meta-learner is deprecated/disabled: remove it from ensemble methods
+        self.ensemble_methods = [m for m in config["ensemble_methods"] if m != "meta_learner"]
         self.epochs_meta_learner = config["epochs_meta_learner"]
         
         # logging parameters
@@ -2699,7 +2940,7 @@ class EnsembleSelection_new():
         if weighted:
             weights = get_weights_by_task_loss(losses)
         else:
-            weights = tensor.ones(num_models)
+            weights = torch.ones(num_models)
         
         # Compute the initial ensemble loss
         ens_loss = self._get_weighted_ens_loss(list(ensemble), outputs_stack, target, weights)

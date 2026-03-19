@@ -419,7 +419,8 @@ class Trainer():
         self.optimal_k = config["optimal_k"]
 
         # ensemble parameters
-        self.ensemble_methods = config["ensemble_methods"]
+        # Meta-learner is deprecated/disabled: remove it from ensemble methods
+        self.ensemble_methods = [m for m in config["ensemble_methods"] if m != "meta_learner"]
         self.epochs_meta_learner = config["epochs_meta_learner"]
         
         # logging parameters
